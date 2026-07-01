@@ -431,10 +431,20 @@ jobs:
         with:
           path: artifacts
 
+      - name: Compute release version and tag
+        id: release_tag
+        run: |
+          DISPLAY_VERSION="$(echo "${{ github.event.inputs.version }}" | sed 's/reF1nd/Exslr/g')"
+          RELEASE_TAG="v${DISPLAY_VERSION}"
+          echo "version=${DISPLAY_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Display version: ${DISPLAY_VERSION}"
+          echo "Release tag: ${RELEASE_TAG}"
+
       - name: Generate stable-build-info.json
         run: |
           jq \
-            --arg version "${{ github.event.inputs.version }}" \
+            --arg version "${{ steps.release_tag.outputs.version }}" \
             --arg built_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --arg run_id "${{ github.run_id }}" \
             '.version = $version | .built_at = $built_at | .run_id = $run_id' \
@@ -461,13 +471,13 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add stable-build-info.json
-          git commit -m "Release v${{ github.event.inputs.version }}"
+          git commit -m "Release ${{ steps.release_tag.outputs.tag }}"
           git pull --rebase
           git push
 
       - name: Delete existing tag and release if exists
         run: |
-          TAG="v${{ github.event.inputs.version }}"
+          TAG="${{ steps.release_tag.outputs.tag }}"
           RELEASE_ID=$(gh release view "$TAG" --json id -q '.id' 2>/dev/null || true)
           if [ -n "$RELEASE_ID" ]; then
             gh release delete "$TAG" --yes
@@ -488,8 +498,8 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: v${{ github.event.inputs.version }}
-          name: v${{ github.event.inputs.version }}
+          tag_name: ${{ steps.release_tag.outputs.tag }}
+          name: ${{ steps.release_tag.outputs.tag }}
           prerelease: ${{ github.event.inputs.publish_release == 'pre-release' }}
           body_path: release-notes.md
           files: release_files/*
