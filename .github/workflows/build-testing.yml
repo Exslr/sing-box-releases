@@ -1,4 +1,4 @@
-name: 1Build sing-box stable (Windows, Linux, Darwin)
+name: Build sing-box testing (Windows, Linux, Darwin)
 
 on:
   workflow_dispatch:
@@ -452,19 +452,19 @@ jobs:
         with:
           path: artifacts
 
-      - name: Generate stable-build-info.json
+      - name: Generate testing-build-info.json
         run: |
           jq \
             --arg version "${{ needs.compute_version.outputs.display_version }}" \
             --arg built_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --arg run_id "${{ github.run_id }}" \
             '.version = $version | .built_at = $built_at | .run_id = $run_id' \
-            stable-build-info.json > updated-stable-build-info.json
-          mv updated-stable-build-info.json stable-build-info.json
+            testing-build-info.json > updated-testing-build-info.json
+          mv updated-testing-build-info.json testing-build-info.json
 
-          VERSION=$(jq -r '.version' stable-build-info.json)
-          BUILT_AT=$(jq -r '.built_at' stable-build-info.json)
-          RUN_ID=$(jq -r '.run_id' stable-build-info.json)
+          VERSION=$(jq -r '.version' testing-build-info.json)
+          BUILT_AT=$(jq -r '.built_at' testing-build-info.json)
+          RUN_ID=$(jq -r '.run_id' testing-build-info.json)
 
           {
             echo "## sing-box v${VERSION}"
@@ -472,7 +472,7 @@ jobs:
             echo "| Field | Value |"
             echo "|---|---|"
             echo "| Version | \`${VERSION}\` |"
-            echo "| sing-box Branch | [\`reF1nd-stable\`](https://github.com/Exslr/sing-box/tree/reF1nd-stable) |"
+            echo "| sing-box Branch | [\`reF1nd-testing\`](https://github.com/Exslr/sing-box/tree/reF1nd-testing) |"
             echo "| Built At | ${BUILT_AT} |"
             echo "| Run ID | [${RUN_ID}](https://github.com/${{ github.repository }}/actions/runs/${RUN_ID}) |"
           } > release-notes.md
@@ -481,7 +481,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add stable-build-info.json
+          git add testing-build-info.json
           git commit -m "Release ${{ needs.compute_version.outputs.release_tag }}"
           git pull --rebase
           git push
