@@ -20,15 +20,15 @@ on:
         type: boolean
         default: true
       build_windows_gui:
-        description: 'Build Windows GUI'
+        description: 'Build Windows GUI (requires WINDOWS_CERTIFICATES_P12 / WINDOWS_P12_PASSWORD secrets)'
         required: false
         type: boolean
-        default: true
+        default: false
       build_linux_gui:
-        description: 'Build Linux GUI'
+        description: 'Build Linux GUI (requires GPG_KEY / GPG_KEY_ID / GPG_PASSPHRASE secrets)'
         required: false
         type: boolean
-        default: true
+        default: false
       publish_release:
         description: 'Publish type after build'
         required: false
@@ -259,61 +259,6 @@ jobs:
             macos_deployment_target: '10.13'
             cgo: '1'
             naive: false
-          - platform: android
-            arch: 386
-            os: ubuntu-26.04
-            goos: android
-            goarch: 386
-            goamd64: ''
-            binary: sing-box
-            artifact_name: binary-android-386
-            cgo: '1'
-            cc_triple: 'i686-linux-android23'
-            naive: true
-          - platform: android
-            arch: amd64
-            os: ubuntu-26.04
-            goos: android
-            goarch: amd64
-            goamd64: v1
-            binary: sing-box
-            artifact_name: binary-android-amd64
-            cgo: '1'
-            cc_triple: 'x86_64-linux-android23'
-            naive: true
-          - platform: android
-            arch: amd64v3
-            os: ubuntu-26.04
-            goos: android
-            goarch: amd64
-            goamd64: v3
-            binary: sing-box
-            artifact_name: binary-android-amd64v3
-            cgo: '1'
-            cc_triple: 'x86_64-linux-android23'
-            naive: true
-          - platform: android
-            arch: arm
-            os: ubuntu-26.04
-            goos: android
-            goarch: arm
-            goamd64: ''
-            binary: sing-box
-            artifact_name: binary-android-arm
-            cgo: '1'
-            cc_triple: 'armv7a-linux-androideabi23'
-            naive: true
-          - platform: android
-            arch: arm64
-            os: ubuntu-26.04
-            goos: android
-            goarch: arm64
-            goamd64: ''
-            binary: sing-box
-            artifact_name: binary-android-arm64
-            cgo: '1'
-            cc_triple: 'aarch64-linux-android23'
-            naive: true
     steps:
       - name: Setup Go for Darwin
         if: matrix.platform == 'darwin' && matrix.legacy_macos != true
@@ -365,8 +310,8 @@ jobs:
           path: ~/go/pkg/mod
           key: go-mod-macos-${{ hashFiles('sing-box/go.sum') }}
           restore-keys: go-mod-macos-
-      - name: Restore Go modules for Linux and Android
-        if: matrix.platform == 'linux' || matrix.platform == 'android'
+      - name: Restore Go modules for Linux
+        if: matrix.platform == 'linux'
         uses: actions/cache/restore@v5
         with:
           path: ~/go/pkg/mod
@@ -379,13 +324,6 @@ jobs:
           path: ~/go/pkg/mod
           key: go-mod-windows-${{ hashFiles('sing-box/go.sum') }}
           restore-keys: go-mod-windows-
-      - name: Setup Android NDK
-        if: matrix.platform == 'android'
-        id: setup-ndk
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r28
-          #local-cache: true
       - name: Clone cronet-go
         if: matrix.variant == 'glibc' || matrix.variant == 'musl'
         shell: bash
@@ -443,7 +381,7 @@ jobs:
           if [[ "${{ matrix.naive }}" == "true" && "${TAGS}" != *with_naive_outbound* ]]; then
             TAGS="${TAGS},with_naive_outbound"
           fi
-          if [[ -d sing-box/common/ebpf && ("${{ matrix.platform }}" == "linux" || "${{ matrix.platform }}" == "android") && "${TAGS}" != *with_ebpf* ]]; then
+          if [[ -d sing-box/common/ebpf && "${{ matrix.platform }}" == "linux" && "${TAGS}" != *with_ebpf* ]]; then
             TAGS="${TAGS},with_ebpf"
           fi
           ARCHIVE_SUFFIX=""
@@ -478,9 +416,6 @@ jobs:
           set -xeuo pipefail
           cd sing-box
           mkdir -p dist
-          if [[ -n "${{ matrix.cc_triple }}" ]]; then
-            export CC="${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.cc_triple }}-clang"
-          fi
           go build -v -trimpath -o "dist/${{ matrix.binary }}" \
             -tags "${{ steps.env.outputs.tags }}" \
             -ldflags "-X github.com/sagernet/sing-box/constant.Version=${{ needs.resolve_source.outputs.display_version }} ${LDFLAGS_SHARED} -s -w -buildid=" \
@@ -561,16 +496,6 @@ jobs:
           cp sing-box "$DIR_NAME/"
           tar -czvf "$DIR_NAME.tar.gz" "$DIR_NAME"
           rm -rf "$DIR_NAME" sing-box
-      - name: Archive (Android)
-        if: matrix.platform == 'android'
-        run: |
-          cd sing-box/dist
-          DIR_NAME="sing-box-${{ needs.resolve_source.outputs.display_version }}-android-${{ matrix.arch }}"
-          mkdir -p "$DIR_NAME"
-          cp ../LICENSE "$DIR_NAME/"
-          cp sing-box "$DIR_NAME/"
-          tar -czvf "$DIR_NAME.tar.gz" "$DIR_NAME"
-          rm -rf "$DIR_NAME" sing-box
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
@@ -584,7 +509,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go_arch: ['386', amd64, arm, arm64]
+        # arm64 -> arm64-v8a, arm -> armeabi-v7a (the two common Android ABIs).
+        # Add '386' (x86) and amd64 (x86_64) back for emulator support.
+        go_arch: [arm, arm64]
     steps:
       - name: Checkout sing-box
         uses: actions/checkout@v6
@@ -645,9 +572,6 @@ jobs:
           - variant: other
             task: :app:assembleOtherRelease
             output: app/build/outputs/apk/other/release/*.apk
-          - variant: other-legacy
-            task: :app:assembleOtherLegacyRelease
-            output: app/build/outputs/apk/otherLegacy/release/*.apk
     steps:
       - name: Checkout sing-box
         uses: actions/checkout@v6
