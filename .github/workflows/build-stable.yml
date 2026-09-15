@@ -294,7 +294,7 @@ jobs:
           if [[ "${{ matrix.naive }}" == "true" && "${TAGS}" != *with_naive_outbound* ]]; then
             TAGS="${TAGS},with_naive_outbound"
           fi
-          if [[ -d sing-box/common/ebpf && "${{ matrix.platform }}" == "linux" && "${TAGS}" != *with_ebpf* ]]; then
+          if [[ -f sing-box/include/ebpf.go && ("${{ matrix.platform }}" == "linux" || "${{ matrix.platform }}" == "android") && "${TAGS}" != *with_ebpf* ]]; then
             TAGS="${TAGS},with_ebpf"
           fi
           ARCHIVE_SUFFIX=""
@@ -418,9 +418,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # arm64 -> arm64-v8a only. Add 'arm' (armeabi-v7a) back for 32-bit
-        # devices, or '386'/amd64 for emulator support.
-        go_arch: [arm64]
+        # arm -> armeabi-v7a, arm64 -> arm64-v8a. The x86 ABIs are omitted
+        # here; the upstream client still splits APKs for them, so the upload
+        # step filters those out rather than publishing APKs with no libbox.so.
+        go_arch: [arm, arm64]
     steps:
       - name: Checkout sing-box
         uses: actions/checkout@v6
@@ -480,7 +481,7 @@ jobs:
         include:
           - variant: other
             task: :app:assembleOtherRelease
-            output: app/build/outputs/apk/other/release/*.apk
+            output: app/build/outputs/apk/other/release
     steps:
       - name: Checkout sing-box
         uses: actions/checkout@v6
@@ -573,7 +574,19 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          cp sing-box-for-android/${{ matrix.output }} dist
+          # Publish only the ABIs we build a libbox.so for. The upstream
+          # client's gradle ABI split list also covers x86 and x86_64; those
+          # APKs are produced without native code and crash on launch.
+          src="sing-box-for-android/${{ matrix.output }}"
+          for abi in arm64-v8a armeabi-v7a universal; do
+            cp "$src"/SFA-*-"$abi".apk dist/
+          done
+          count=$(find dist -name '*.apk' | wc -l)
+          if [[ "$count" -ne 3 ]]; then
+            echo "expected 3 APKs, found $count" >&2
+            exit 1
+          fi
+          ls -l dist
           if [[ "${{ matrix.variant }}" == "other" ]]; then
             printf '{\n    "version_code": %s,\n    "version_name": "%s"\n}\n' \
               "$VERSION_CODE" "${{ needs.resolve_source.outputs.display_version }}" > dist/SFA-version-metadata.json
