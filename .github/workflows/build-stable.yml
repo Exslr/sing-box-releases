@@ -1,4 +1,4 @@
-name: Build sing-box stable (Android and CLI)
+name: Build sing-box stable (Android, Windows, Linux, Darwin)
 on:
   workflow_dispatch:
     inputs:
@@ -19,6 +19,11 @@ on:
         required: false
         type: boolean
         default: true
+      build_windows_gui:
+        description: 'Build Windows GUI (requires WINDOWS_CERTIFICATES_P12 / WINDOWS_P12_PASSWORD secrets)'
+        required: false
+        type: boolean
+        default: true
       publish_release:
         description: 'Publish type (a release is always created)'
         required: false
@@ -26,13 +31,13 @@ on:
         options:
           - pre-release
           - release
-        default: pre-release
+        default: release
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.version }}
   cancel-in-progress: true
 env:
-  GO_VERSION: '~1.25.12'
-  GO_VERSION_DARWIN: '^1.25.3'
+  GO_VERSION: '1.26.8'
+  GO_VERSION_DARWIN: '1.26.8'
 jobs:
   resolve_source:
     name: Resolve sing-box source
@@ -72,12 +77,12 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
   build_cli:
     if: ${{ github.event.inputs.build_cli == 'true' }}
-    name: Build CLI ${{ matrix.platform }}-${{ matrix.arch }} ${{ matrix.variant || matrix.legacy_name }}
+    name: Build CLI ${{ matrix.platform }}-${{ matrix.arch }} ${{ matrix.variant }}
     runs-on: ${{ matrix.os }}
     needs: resolve_source
     strategy:
       fail-fast: false
-      max-parallel: 13
+      max-parallel: 10
       matrix:
         include:
           - platform: linux
@@ -144,38 +149,6 @@ jobs:
             artifact_name: binary-linux-amd64-musl
             cgo: '1'
             naive: true
-          - platform: linux
-            arch: amd64v3
-            os: ubuntu-26.04
-            goos: linux
-            goarch: amd64
-            goamd64: v3
-            binary: sing-box
-            variant: purego
-            artifact_name: binary-linux-amd64v3-purego
-            naive: true
-          - platform: linux
-            arch: amd64v3
-            os: ubuntu-26.04
-            goos: linux
-            goarch: amd64
-            goamd64: v3
-            binary: sing-box
-            variant: glibc
-            artifact_name: binary-linux-amd64v3-glibc
-            cgo: '1'
-            naive: true
-          - platform: linux
-            arch: amd64v3
-            os: ubuntu-26.04
-            goos: linux
-            goarch: amd64
-            goamd64: v3
-            binary: sing-box
-            variant: musl
-            artifact_name: binary-linux-amd64v3-musl
-            cgo: '1'
-            naive: true
           - platform: windows
             arch: arm64
             os: windows-latest
@@ -216,42 +189,9 @@ jobs:
             artifact_name: binary-darwin-arm64
             cgo: '1'
             naive: true
-          - platform: darwin
-            arch: amd64
-            os: macos-latest
-            goos: darwin
-            goarch: amd64
-            goamd64: v1
-            binary: sing-box
-            artifact_name: binary-darwin-amd64
-            cgo: '1'
-            naive: true
-          - platform: darwin
-            arch: amd64v3
-            os: macos-latest
-            goos: darwin
-            goarch: amd64
-            goamd64: v3
-            binary: sing-box
-            artifact_name: binary-darwin-amd64v3
-            cgo: '1'
-            naive: true
-          - platform: darwin
-            arch: amd64
-            os: macos-latest
-            goos: darwin
-            goarch: amd64
-            goamd64: v1
-            binary: sing-box
-            artifact_name: binary-darwin-amd64-legacy-macos-10.13
-            legacy_macos: true
-            legacy_name: macos-10.13
-            macos_deployment_target: '10.13'
-            cgo: '1'
-            naive: false
     steps:
       - name: Setup Go for Darwin
-        if: matrix.platform == 'darwin' && matrix.legacy_macos != true
+        if: matrix.platform == 'darwin'
         uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION_DARWIN }}
@@ -276,23 +216,6 @@ jobs:
           cd sing-box
           TAG="v${{ needs.resolve_source.outputs.display_version }}"
           git tag -f "${TAG}" "${{ needs.resolve_source.outputs.source_sha }}"
-      - name: Cache Go for macOS 10.13
-        if: matrix.legacy_macos == true
-        id: cache-go-for-macos1013
-        uses: actions/cache@v5
-        with:
-          path: ~/go/go_osx
-          key: go-osx-macos1013-${{ hashFiles('sing-box/.github/setup_go_for_macos1013.sh') }}
-      - name: Setup Go for macOS 10.13
-        if: matrix.legacy_macos == true && steps.cache-go-for-macos1013.outputs.cache-hit != 'true'
-        run: sing-box/.github/setup_go_for_macos1013.sh
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-      - name: Activate Go for macOS 10.13
-        if: matrix.legacy_macos == true
-        run: |
-          echo "PATH=$HOME/go/go_osx/bin:$PATH" >> "$GITHUB_ENV"
-          echo "GOROOT=$HOME/go/go_osx" >> "$GITHUB_ENV"
       - name: Cache Go modules for Darwin
         if: matrix.platform == 'darwin'
         uses: actions/cache@v5
@@ -371,6 +294,9 @@ jobs:
           if [[ "${{ matrix.naive }}" == "true" && "${TAGS}" != *with_naive_outbound* ]]; then
             TAGS="${TAGS},with_naive_outbound"
           fi
+          if [[ -d sing-box/common/ebpf && "${{ matrix.platform }}" == "linux" && "${TAGS}" != *with_ebpf* ]]; then
+            TAGS="${TAGS},with_ebpf"
+          fi
           ARCHIVE_SUFFIX=""
           case "${{ matrix.variant }}" in
             'purego')
@@ -413,7 +339,6 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           GOAMD64: ${{ matrix.goamd64 }}
-          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.macos_deployment_target }}
       - name: Extract libcronet.so
         if: matrix.variant == 'purego' && matrix.platform == 'linux'
         shell: bash
@@ -475,9 +400,6 @@ jobs:
         run: |
           cd sing-box/dist
           DIR_NAME="sing-box-${{ needs.resolve_source.outputs.display_version }}-darwin-${{ matrix.arch }}"
-          if [[ -n "${{ matrix.legacy_name }}" ]]; then
-            DIR_NAME="${DIR_NAME}-legacy-${{ matrix.legacy_name }}"
-          fi
           mkdir -p "$DIR_NAME"
           cp ../LICENSE "$DIR_NAME/"
           cp sing-box "$DIR_NAME/"
@@ -496,9 +418,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # arm64 -> arm64-v8a, arm -> armeabi-v7a (the two common Android ABIs).
-        # Add '386' (x86) and amd64 (x86_64) back for emulator support.
-        go_arch: [arm, arm64]
+        # arm64 -> arm64-v8a only. Add 'arm' (armeabi-v7a) back for 32-bit
+        # devices, or '386'/amd64 for emulator support.
+        go_arch: [arm64]
     steps:
       - name: Checkout sing-box
         uses: actions/checkout@v6
@@ -662,11 +584,130 @@ jobs:
         with:
           name: android-apk-${{ matrix.variant }}
           path: dist
+  build_windows_gui:
+    if: ${{ github.event.inputs.build_windows_gui == 'true' }}
+    name: Build Windows GUI (${{ matrix.desktop_arch }})
+    runs-on: windows-latest
+    needs: resolve_source
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - desktop_arch: x64
+            rust_target: x86_64-pc-windows-msvc
+          - desktop_arch: arm64
+            rust_target: aarch64-pc-windows-msvc
+    steps:
+      - name: Checkout sing-box
+        uses: actions/checkout@v6
+        with:
+          repository: reF1nd/sing-box
+          ref: ${{ needs.resolve_source.outputs.source_sha }}
+          path: sing-box
+          fetch-depth: 1
+      - name: Checkout sing-box-for-desktop
+        uses: actions/checkout@v6
+        with:
+          repository: reF1nd/sing-box-for-desktop
+          ref: reF1nd-main
+          path: sing-box-for-desktop
+          submodules: recursive
+      - name: Set build tag
+        shell: pwsh
+        run: |
+          $tag = "v${{ needs.resolve_source.outputs.display_version }}"
+          git -C sing-box tag -f $tag "${{ needs.resolve_source.outputs.source_sha }}"
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Cache Go modules
+        uses: actions/cache@v5
+        with:
+          path: ~/go/pkg/mod
+          key: go-mod-desktop-windows-${{ hashFiles('sing-box/go.sum') }}
+          restore-keys: go-mod-desktop-windows-
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          targets: ${{ matrix.rust_target }}
+      - name: Cache Windows sharing module
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/git
+            ~/.cargo/registry
+            sing-box-for-desktop/bin/windows-share-toolchain/cargo-target
+          key: windows-share-${{ matrix.rust_target }}-${{ hashFiles('sing-box-for-desktop/native/windows-share/Cargo.lock') }}
+          restore-keys: windows-share-${{ matrix.rust_target }}-
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4.4.0
+        with:
+          package_json_file: sing-box-for-desktop/package.json
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: sing-box-for-desktop/package.json
+          cache: pnpm
+          cache-dependency-path: |
+            sing-box-for-desktop/pnpm-lock.yaml
+            sing-box-for-desktop/dashboard/pnpm-lock.yaml
+      - name: Update version
+        shell: pwsh
+        run: |
+          $versionPath = 'sing-box-for-desktop/version.json'
+          $versionMetadata = Get-Content -Raw $versionPath | ConvertFrom-Json
+          $versionMetadata.version = $env:DESKTOP_VERSION
+          $versionMetadata | ConvertTo-Json -Depth 100 | Set-Content -Encoding utf8NoBOM $versionPath
+          Get-Content $versionPath
+        env:
+          DESKTOP_VERSION: ${{ needs.resolve_source.outputs.display_version }}
+      - name: Setup signing
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATES_P12)) {
+            throw 'WINDOWS_CERTIFICATES_P12 is not configured'
+          }
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_P12_PASSWORD)) {
+            throw 'WINDOWS_P12_PASSWORD is not configured'
+          }
+          $certificatePath = Join-Path $env:RUNNER_TEMP 'windows-signing.p12'
+          [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATES_P12))
+          @{
+            windows = @{
+              certificateFile = $certificatePath
+              certificatePassword = $env:WINDOWS_P12_PASSWORD
+            }
+          } | ConvertTo-Json -Depth 3 | Set-Content -Encoding utf8NoBOM sing-box-for-desktop/signing.local.json
+        env:
+          WINDOWS_CERTIFICATES_P12: ${{ secrets.WINDOWS_CERTIFICATES_P12 }}
+          WINDOWS_P12_PASSWORD: ${{ secrets.WINDOWS_P12_PASSWORD }}
+      - name: Install dependencies
+        run: pnpm -C sing-box-for-desktop install
+      - name: Build
+        run: pnpm -C sing-box-for-desktop package:win -- ${{ matrix.desktop_arch }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare upload
+        shell: pwsh
+        run: |
+          $artifacts = @(Get-ChildItem sing-box-for-desktop/release/SFW-*.exe -File)
+          if ($artifacts.Count -ne 1) {
+            throw "expected 1 Windows installer for ${{ matrix.desktop_arch }}, found $($artifacts.Count)"
+          }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item $artifacts.FullName dist
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-gui-${{ matrix.desktop_arch }}
+          path: dist
   finalize_build:
     name: Finalize build artifacts
     runs-on: ubuntu-latest
-    needs: [resolve_source, build_cli, build_android_library, build_android]
-    if: ${{ always() && needs.resolve_source.result == 'success' && (inputs.build_cli || inputs.build_android_gui) && (!inputs.build_cli || needs.build_cli.result == 'success') && (!inputs.build_android_gui || (needs.build_android_library.result == 'success' && needs.build_android.result == 'success')) }}
+    needs: [resolve_source, build_cli, build_android_library, build_android, build_windows_gui]
+    if: ${{ always() && needs.resolve_source.result == 'success' && (inputs.build_cli || inputs.build_android_gui || inputs.build_windows_gui) && (!inputs.build_cli || needs.build_cli.result == 'success') && (!inputs.build_android_gui || (needs.build_android_library.result == 'success' && needs.build_android.result == 'success')) && (!inputs.build_windows_gui || needs.build_windows_gui.result == 'success') }}
     permissions:
       actions: read
       contents: read
@@ -686,6 +727,13 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           pattern: android-apk-*
+          path: artifacts
+          merge-multiple: true
+      - name: Download Windows GUI artifacts
+        if: inputs.build_windows_gui
+        uses: actions/download-artifact@v8
+        with:
+          pattern: windows-gui-*
           path: artifacts
           merge-multiple: true
       - name: Generate build manifest
@@ -715,7 +763,7 @@ jobs:
             --argjson run_attempt "${{ github.run_attempt }}" \
             --argjson build_cli "${{ inputs.build_cli }}" \
             --argjson build_android_gui "${{ inputs.build_android_gui }}" \
-            --argjson build_windows_gui false \
+            --argjson build_windows_gui "${{ inputs.build_windows_gui }}" \
             --argjson build_linux_gui false \
             --slurpfile artifact_files artifact-files.json \
             '{
@@ -772,6 +820,13 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           pattern: android-apk-*
+          path: artifacts
+          merge-multiple: true
+      - name: Download Windows GUI artifacts
+        if: inputs.build_windows_gui
+        uses: actions/download-artifact@v8
+        with:
+          pattern: windows-gui-*
           path: artifacts
           merge-multiple: true
       - name: Download build manifest

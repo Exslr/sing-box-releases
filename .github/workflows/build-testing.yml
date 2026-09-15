@@ -23,12 +23,7 @@ on:
         description: 'Build Windows GUI (requires WINDOWS_CERTIFICATES_P12 / WINDOWS_P12_PASSWORD secrets)'
         required: false
         type: boolean
-        default: false
-      build_linux_gui:
-        description: 'Build Linux GUI (requires GPG_KEY / GPG_KEY_ID / GPG_PASSPHRASE secrets)'
-        required: false
-        type: boolean
-        default: false
+        default: true
       publish_release:
         description: 'Publish type (a release is always created)'
         required: false
@@ -41,8 +36,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.version }}
   cancel-in-progress: true
 env:
-  GO_VERSION: '1.26.6'
-  GO_VERSION_DARWIN: '1.26.6'
+  GO_VERSION: '1.26.8'
+  GO_VERSION_DARWIN: '1.26.8'
 jobs:
   resolve_source:
     name: Resolve sing-box source
@@ -82,12 +77,12 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
   build_cli:
     if: ${{ github.event.inputs.build_cli == 'true' }}
-    name: Build CLI ${{ matrix.platform }}-${{ matrix.arch }} ${{ matrix.variant || matrix.legacy_name }}
+    name: Build CLI ${{ matrix.platform }}-${{ matrix.arch }} ${{ matrix.variant }}
     runs-on: ${{ matrix.os }}
     needs: resolve_source
     strategy:
       fail-fast: false
-      max-parallel: 13
+      max-parallel: 10
       matrix:
         include:
           - platform: linux
@@ -154,38 +149,6 @@ jobs:
             artifact_name: binary-linux-amd64-musl
             cgo: '1'
             naive: true
-          - platform: linux
-            arch: amd64v3
-            os: ubuntu-26.04
-            goos: linux
-            goarch: amd64
-            goamd64: v3
-            binary: sing-box
-            variant: purego
-            artifact_name: binary-linux-amd64v3-purego
-            naive: true
-          - platform: linux
-            arch: amd64v3
-            os: ubuntu-26.04
-            goos: linux
-            goarch: amd64
-            goamd64: v3
-            binary: sing-box
-            variant: glibc
-            artifact_name: binary-linux-amd64v3-glibc
-            cgo: '1'
-            naive: true
-          - platform: linux
-            arch: amd64v3
-            os: ubuntu-26.04
-            goos: linux
-            goarch: amd64
-            goamd64: v3
-            binary: sing-box
-            variant: musl
-            artifact_name: binary-linux-amd64v3-musl
-            cgo: '1'
-            naive: true
           - platform: windows
             arch: arm64
             os: windows-latest
@@ -226,42 +189,9 @@ jobs:
             artifact_name: binary-darwin-arm64
             cgo: '1'
             naive: true
-          - platform: darwin
-            arch: amd64
-            os: macos-latest
-            goos: darwin
-            goarch: amd64
-            goamd64: v1
-            binary: sing-box
-            artifact_name: binary-darwin-amd64
-            cgo: '1'
-            naive: true
-          - platform: darwin
-            arch: amd64v3
-            os: macos-latest
-            goos: darwin
-            goarch: amd64
-            goamd64: v3
-            binary: sing-box
-            artifact_name: binary-darwin-amd64v3
-            cgo: '1'
-            naive: true
-          - platform: darwin
-            arch: amd64
-            os: macos-latest
-            goos: darwin
-            goarch: amd64
-            goamd64: v1
-            binary: sing-box
-            artifact_name: binary-darwin-amd64-legacy-macos-10.13
-            legacy_macos: true
-            legacy_name: macos-10.13
-            macos_deployment_target: '10.13'
-            cgo: '1'
-            naive: false
     steps:
       - name: Setup Go for Darwin
-        if: matrix.platform == 'darwin' && matrix.legacy_macos != true
+        if: matrix.platform == 'darwin'
         uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION_DARWIN }}
@@ -286,23 +216,6 @@ jobs:
           cd sing-box
           TAG="v${{ needs.resolve_source.outputs.display_version }}"
           git tag -f "${TAG}" "${{ needs.resolve_source.outputs.source_sha }}"
-      - name: Cache Go for macOS 10.13
-        if: matrix.legacy_macos == true
-        id: cache-go-for-macos1013
-        uses: actions/cache@v5
-        with:
-          path: ~/go/go_osx
-          key: go-osx-macos1013-${{ hashFiles('sing-box/.github/setup_go_for_macos1013.sh') }}
-      - name: Setup Go for macOS 10.13
-        if: matrix.legacy_macos == true && steps.cache-go-for-macos1013.outputs.cache-hit != 'true'
-        run: sing-box/.github/setup_go_for_macos1013.sh
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-      - name: Activate Go for macOS 10.13
-        if: matrix.legacy_macos == true
-        run: |
-          echo "PATH=$HOME/go/go_osx/bin:$PATH" >> "$GITHUB_ENV"
-          echo "GOROOT=$HOME/go/go_osx" >> "$GITHUB_ENV"
       - name: Cache Go modules for Darwin
         if: matrix.platform == 'darwin'
         uses: actions/cache@v5
@@ -426,7 +339,6 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           GOAMD64: ${{ matrix.goamd64 }}
-          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.macos_deployment_target }}
       - name: Extract libcronet.so
         if: matrix.variant == 'purego' && matrix.platform == 'linux'
         shell: bash
@@ -488,9 +400,6 @@ jobs:
         run: |
           cd sing-box/dist
           DIR_NAME="sing-box-${{ needs.resolve_source.outputs.display_version }}-darwin-${{ matrix.arch }}"
-          if [[ -n "${{ matrix.legacy_name }}" ]]; then
-            DIR_NAME="${DIR_NAME}-legacy-${{ matrix.legacy_name }}"
-          fi
           mkdir -p "$DIR_NAME"
           cp ../LICENSE "$DIR_NAME/"
           cp sing-box "$DIR_NAME/"
@@ -509,9 +418,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # arm64 -> arm64-v8a, arm -> armeabi-v7a (the two common Android ABIs).
-        # Add '386' (x86) and amd64 (x86_64) back for emulator support.
-        go_arch: [arm, arm64]
+        # arm64 -> arm64-v8a only. Add 'arm' (armeabi-v7a) back for 32-bit
+        # devices, or '386'/amd64 for emulator support.
+        go_arch: [arm64]
     steps:
       - name: Checkout sing-box
         uses: actions/checkout@v6
@@ -686,8 +595,6 @@ jobs:
         include:
           - desktop_arch: x64
             rust_target: x86_64-pc-windows-msvc
-          - desktop_arch: x86
-            rust_target: i686-pc-windows-msvc
           - desktop_arch: arm64
             rust_target: aarch64-pc-windows-msvc
     steps:
@@ -702,7 +609,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: reF1nd/sing-box-for-desktop
-          ref: reF1nd-main
+          ref: reF1nd-dev
           path: sing-box-for-desktop
           submodules: recursive
       - name: Set build tag
@@ -796,183 +703,11 @@ jobs:
         with:
           name: windows-gui-${{ matrix.desktop_arch }}
           path: dist
-  build_linux_gui:
-    if: ${{ github.event.inputs.build_linux_gui == 'true' }}
-    name: Build Linux GUI ${{ matrix.desktop_arch }}
-    runs-on: ubuntu-26.04
-    needs: resolve_source
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - desktop_arch: x64
-            go_arch: amd64
-            go_arm: ''
-          - desktop_arch: arm64
-            go_arch: arm64
-            go_arm: ''
-          - desktop_arch: armv7l
-            go_arch: arm
-            go_arm: '7'
-    steps:
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: false
-      - name: Checkout sing-box
-        uses: actions/checkout@v6
-        with:
-          repository: reF1nd/sing-box
-          ref: ${{ needs.resolve_source.outputs.source_sha }}
-          path: sing-box
-          fetch-depth: 1
-      - name: Checkout sing-box-for-desktop
-        uses: actions/checkout@v6
-        with:
-          repository: reF1nd/sing-box-for-desktop
-          ref: reF1nd-main
-          path: sing-box-for-desktop
-          submodules: recursive
-      - name: Cache Go modules
-        uses: actions/cache@v5
-        with:
-          path: ~/go/pkg/mod
-          key: go-mod-desktop-linux-${{ hashFiles('sing-box/go.sum') }}
-          restore-keys: go-mod-desktop-linux-
-      - name: Set build tag
-        run: |
-          set -xeuo pipefail
-          cd sing-box
-          TAG="v${{ needs.resolve_source.outputs.display_version }}"
-          git tag -f "${TAG}" "${{ needs.resolve_source.outputs.source_sha }}"
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4.4.0
-        with:
-          package_json_file: sing-box-for-desktop/package.json
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version-file: sing-box-for-desktop/package.json
-          cache: pnpm
-          cache-dependency-path: |
-            sing-box-for-desktop/pnpm-lock.yaml
-            sing-box-for-desktop/dashboard/pnpm-lock.yaml
-      - name: Update version
-        run: |
-          jq --arg version "$DESKTOP_VERSION" \
-            '.version = $version' \
-            sing-box-for-desktop/version.json > "$RUNNER_TEMP/desktop-version.json"
-          mv "$RUNNER_TEMP/desktop-version.json" sing-box-for-desktop/version.json
-          cat sing-box-for-desktop/version.json
-        env:
-          DESKTOP_VERSION: ${{ needs.resolve_source.outputs.display_version }}
-      - name: Clone cronet-go
-        run: |
-          set -xeuo pipefail
-          CRONET_GO_VERSION=$(cat sing-box/.github/CRONET_GO_VERSION)
-          git init ~/cronet-go
-          git -C ~/cronet-go remote add origin https://github.com/sagernet/cronet-go.git
-          git -C ~/cronet-go fetch --depth=1 origin "$CRONET_GO_VERSION"
-          git -C ~/cronet-go checkout FETCH_HEAD
-          git -C ~/cronet-go submodule update --init --recursive --depth=1
-      - name: Regenerate Debian keyring
-        run: |
-          set -xeuo pipefail
-          rm -f ~/cronet-go/naiveproxy/src/build/linux/sysroot_scripts/keyring.gpg
-          cd ~/cronet-go
-          GPG_TTY=/dev/null ./naiveproxy/src/build/linux/sysroot_scripts/generate_keyring.sh
-      - name: Download Chromium toolchain
-        run: |
-          set -xeuo pipefail
-          cd ~/cronet-go
-          go run ./cmd/build-naive --target=linux/${{ matrix.go_arch }} download-toolchain
-      - name: Set Chromium toolchain environment
-        run: |
-          set -xeuo pipefail
-          cd ~/cronet-go
-          go run ./cmd/build-naive --target=linux/${{ matrix.go_arch }} env >> "$GITHUB_ENV"
-      - name: Install package tools
-        run: |
-          set -euo pipefail
-          sudo apt-get update || true
-          sudo apt-get install -y debsigs libarchive-tools rpm zstd
-          echo '%_rpmformat 4' > "$HOME/.rpmmacros"
-      - name: Install dependencies
-        run: pnpm -C sing-box-for-desktop install
-      - name: Build
-        run: pnpm -C sing-box-for-desktop package:linux -- deb rpm pacman ${{ matrix.desktop_arch }}
-        env:
-          CGO_ENABLED: '0'
-          GOARM: ${{ matrix.go_arm }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Setup package signing
-        run: |
-          set -euo pipefail
-          [[ -n "$GPG_KEY" ]] || { echo 'GPG_KEY is not configured' >&2; exit 1; }
-          [[ -n "$GPG_KEY_ID" ]] || { echo 'GPG_KEY_ID is not configured' >&2; exit 1; }
-          [[ -n "$GPG_PASSPHRASE" ]] || { echo 'GPG_PASSPHRASE is not configured' >&2; exit 1; }
-          SIGNING_GNUPG_HOME="$RUNNER_TEMP/package-signing-gnupg"
-          SIGNING_PASSPHRASE_FILE="$RUNNER_TEMP/package-signing-passphrase"
-          mkdir -m 700 "$SIGNING_GNUPG_HOME"
-          printf '%s' "$GPG_PASSPHRASE" > "$SIGNING_PASSPHRASE_FILE"
-          chmod 600 "$SIGNING_PASSPHRASE_FILE"
-          {
-            echo "GNUPGHOME=$SIGNING_GNUPG_HOME"
-            echo "SIGNING_PASSPHRASE_FILE=$SIGNING_PASSPHRASE_FILE"
-          } >> "$GITHUB_ENV"
-          printf '%s' "$GPG_KEY" | gpg \
-            --homedir "$SIGNING_GNUPG_HOME" \
-            --batch \
-            --pinentry-mode loopback \
-            --passphrase-file "$SIGNING_PASSPHRASE_FILE" \
-            --import
-          gpg --homedir "$SIGNING_GNUPG_HOME" \
-            --batch \
-            --list-secret-keys "$GPG_KEY_ID" >/dev/null
-          cat > "$HOME/.rpmmacros" <<EOF
-          %_gpg_name $GPG_KEY_ID
-          %_gpg_sign_cmd_extra_args --pinentry-mode loopback --passphrase-file $SIGNING_PASSPHRASE_FILE
-          EOF
-        env:
-          GPG_KEY: ${{ secrets.GPG_KEY }}
-          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-      - name: Sign Linux packages
-        run: |
-          set -euo pipefail
-          debsigs \
-            --sign=origin \
-            -k "$GPG_KEY_ID" \
-            --gpgopts "--batch --pinentry-mode loopback --passphrase-file $SIGNING_PASSPHRASE_FILE" \
-            sing-box-for-desktop/release/SFL-*.deb
-          rpmsign --addsign sing-box-for-desktop/release/SFL-*.rpm
-        env:
-          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
-      - name: Prepare upload
-        run: |
-          shopt -s nullglob
-          artifacts=(
-            sing-box-for-desktop/release/SFL-*.deb
-            sing-box-for-desktop/release/SFL-*.rpm
-            sing-box-for-desktop/release/SFL-*.pkg.tar.zst
-          )
-          if (( ${#artifacts[@]} != 3 )); then
-            echo "expected 3 Linux packages, found ${#artifacts[@]}" >&2
-            exit 1
-          fi
-          mkdir -p dist
-          cp "${artifacts[@]}" dist
-      - name: Upload artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: linux-gui-${{ matrix.desktop_arch }}
-          path: dist
   finalize_build:
     name: Finalize build artifacts
     runs-on: ubuntu-latest
-    needs: [resolve_source, build_cli, build_android_library, build_android, build_windows_gui, build_linux_gui]
-    if: ${{ always() && needs.resolve_source.result == 'success' && (inputs.build_cli || inputs.build_android_gui || inputs.build_windows_gui || inputs.build_linux_gui) && (!inputs.build_cli || needs.build_cli.result == 'success') && (!inputs.build_android_gui || (needs.build_android_library.result == 'success' && needs.build_android.result == 'success')) && (!inputs.build_windows_gui || needs.build_windows_gui.result == 'success') && (!inputs.build_linux_gui || needs.build_linux_gui.result == 'success') }}
+    needs: [resolve_source, build_cli, build_android_library, build_android, build_windows_gui]
+    if: ${{ always() && needs.resolve_source.result == 'success' && (inputs.build_cli || inputs.build_android_gui || inputs.build_windows_gui) && (!inputs.build_cli || needs.build_cli.result == 'success') && (!inputs.build_android_gui || (needs.build_android_library.result == 'success' && needs.build_android.result == 'success')) && (!inputs.build_windows_gui || needs.build_windows_gui.result == 'success') }}
     permissions:
       actions: read
       contents: read
@@ -999,13 +734,6 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           pattern: windows-gui-*
-          path: artifacts
-          merge-multiple: true
-      - name: Download Linux GUI artifacts
-        if: inputs.build_linux_gui
-        uses: actions/download-artifact@v8
-        with:
-          pattern: linux-gui-*
           path: artifacts
           merge-multiple: true
       - name: Generate build manifest
@@ -1036,7 +764,7 @@ jobs:
             --argjson build_cli "${{ inputs.build_cli }}" \
             --argjson build_android_gui "${{ inputs.build_android_gui }}" \
             --argjson build_windows_gui "${{ inputs.build_windows_gui }}" \
-            --argjson build_linux_gui "${{ inputs.build_linux_gui }}" \
+            --argjson build_linux_gui false \
             --slurpfile artifact_files artifact-files.json \
             '{
               schema_version: 1,
@@ -1099,13 +827,6 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           pattern: windows-gui-*
-          path: artifacts
-          merge-multiple: true
-      - name: Download Linux GUI artifacts
-        if: inputs.build_linux_gui
-        uses: actions/download-artifact@v8
-        with:
-          pattern: linux-gui-*
           path: artifacts
           merge-multiple: true
       - name: Download build manifest
