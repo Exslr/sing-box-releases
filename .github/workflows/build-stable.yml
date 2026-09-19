@@ -728,6 +728,13 @@ jobs:
             -e 's/^productName: sing-box-reF1nd/productName: sing-box-Exslr/' \
             -e 's/^  appId: io\.reF1nd\.sfw/  appId: io.Exslr.sfw/' \
             electron-builder.yml
+          # These three are rewritten by pattern rather than asserted first, so
+          # verify each landed: an upstream reformat would otherwise pass here
+          # silently and leave win.appId disagreeing with setAppUserModelId,
+          # which only shows up at runtime.
+          assert electron-builder.yml 'appId: io.github.Exslr.sing-box-desktop'
+          assert electron-builder.yml 'productName: sing-box-Exslr'
+          assert electron-builder.yml '  appId: io.Exslr.sfw'
           for file in build/installer.nsh build/installer-preflight.ps1 \
                       build/installer-data.ps1 src/main/applicationPaths.ts \
                       src/main/installationLayout.ts src/main/daemon.ts \
