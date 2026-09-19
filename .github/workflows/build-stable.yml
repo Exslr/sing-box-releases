@@ -676,6 +676,45 @@ jobs:
           Get-Content $versionPath
         env:
           DESKTOP_VERSION: ${{ needs.resolve_source.outputs.display_version }}
+      - name: Rebrand daemon and client identifiers
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The daemon authenticates its gRPC peer by opening the client at
+          # <install dir>/<applicationExecutableName>, and the client reaches it
+          # over a fixed named pipe, so the sing-box constants and the
+          # electron-builder productName must be renamed together. Renaming one
+          # side alone still builds, then fails at runtime.
+          assert() { grep -qF "$2" "$1" || { echo "missing in $1: $2" >&2; exit 1; }; }
+
+          assert sing-box/experimental/boxdd/peer_windows.go 'applicationExecutableName = "sing-box-reF1nd.exe"'
+          assert sing-box/experimental/boxdd/main.go 'serviceName = "sing-box-daemon-reF1nd"'
+          assert sing-box/experimental/boxdd/server_windows.go 'Administrators\sing-box-reF1nd'
+          # Only boxdd holds these as string constants. go.mod and go.sum pin
+          # github.com/reF1nd/* dependencies and must keep their paths.
+          sed -i 's/reF1nd/Exslr/g' sing-box/experimental/boxdd/*.go
+          ! grep -rqF 'reF1nd' sing-box/experimental/boxdd/
+
+          cd sing-box-for-desktop
+          assert electron-builder.yml 'productName: sing-box-reF1nd'
+          assert src/main/index.ts 'app.setAppUserModelId("io.reF1nd.sfw")'
+          # Windows keys only: the linux section references build/io.reF1nd.sfl.*
+          # files whose names this step does not rename.
+          sed -i \
+            -e 's/^appId: io\.github\.reF1nd\.sing-box-desktop/appId: io.github.Exslr.sing-box-desktop/' \
+            -e 's/^productName: sing-box-reF1nd/productName: sing-box-Exslr/' \
+            -e 's/^  appId: io\.reF1nd\.sfw/  appId: io.Exslr.sfw/' \
+            electron-builder.yml
+          for file in build/installer.nsh build/installer-preflight.ps1 \
+                      build/installer-data.ps1 src/main/applicationPaths.ts \
+                      src/main/installationLayout.ts src/main/daemon.ts \
+                      src/main/index.ts src/main/appReports.ts \
+                      src/main/updates.ts; do
+            assert "$file" 'reF1nd'
+            sed -i 's/reF1nd/Exslr/g' "$file"
+          done
+          grep -n 'productName:\|^appId:\|  appId:' electron-builder.yml
+          grep -n 'Exslr' src/main/daemon.ts src/main/updates.ts
       - name: Setup signing
         shell: pwsh
         run: |
