@@ -5,8 +5,16 @@
 [reF1nd/sing-box](https://github.com/reF1nd/sing-box) 的自动构建。该项目是
 [sing-box](https://github.com/SagerNet/sing-box) 的一个分支。发布的产物名称由
 `reF1nd` 改为 `Exslr`,构建所依据的上游仓库、分支和源码标签保持原名。
-
 构建产物见 [Releases](https://github.com/Exslr/sing-box-releases/releases)。
+
+> **这是个人构建,仅供我自己和几位朋友使用。** 它不是一个发行版,不在任何地方宣传,
+> 也不面向更广泛的用户维护 —— 什么时候想起来跑一次,才会有新的构建。
+>
+> 如果你偶然来到这里并且正在找 sing-box,请转而从
+> [reF1nd/sing-box](https://github.com/reF1nd/sing-box) 或
+> [SagerNet/sing-box](https://github.com/SagerNet/sing-box) 获取。真正的开发工作在
+> 那边,那里的版本也有人正经维护。所有功劳都属于上游作者,本仓库只是把他们的代码
+> 过一遍构建流程,再把产物改个名字而已。
 
 ## 该下载哪个?
 
@@ -75,5 +83,4 @@ gh attestation verify <文件> --repo Exslr/sing-box-releases
 
 ## 许可证
 
-[GPL-3.0-or-later](LICENSE),继承自 sing-box。本仓库仅包含构建流程,
-所有源代码均归上游项目所有。
+[GPL-3.0-or-later](LICENSE),继承自 sing-box。本仓库仅包含构建流程。

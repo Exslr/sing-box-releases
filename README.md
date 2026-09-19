@@ -5,9 +5,19 @@ English | [简体中文](README.zh-CN.md)
 Automated builds of [reF1nd/sing-box](https://github.com/reF1nd/sing-box), a fork of
 [sing-box](https://github.com/SagerNet/sing-box). Released artifacts are renamed from
 `reF1nd` to `Exslr`; the upstream repositories, branches and source tags they are built
-from keep their original names.
+from keep their original names. Builds are in
+[Releases](https://github.com/Exslr/sing-box-releases/releases).
 
-Grab a build from [Releases](https://github.com/Exslr/sing-box-releases/releases).
+> **This is a personal build, for me and a few friends.** It is not a distribution, it
+> is not promoted anywhere, and it is not maintained for a wider audience — builds
+> happen when I happen to run them.
+>
+> If you ended up here and are looking for sing-box, please get it from
+> [reF1nd/sing-box](https://github.com/reF1nd/sing-box) or
+> [SagerNet/sing-box](https://github.com/SagerNet/sing-box) instead. That is where the
+> actual work is done, and where you will find releases that are properly maintained.
+> All credit belongs to the upstream authors; this repository only runs their code
+> through a build pipeline and renames the output.
 
 ## Which file do I want?
 
@@ -82,4 +92,4 @@ gh attestation verify <file> --repo Exslr/sing-box-releases
 ## License
 
 [GPL-3.0-or-later](LICENSE), inherited from sing-box. This repository contains build
-automation only; all source code belongs to the upstream projects.
+automation only.
