@@ -537,6 +537,29 @@ jobs:
           file="sing-box-for-android/version.properties"
           sed -i "s/^VERSION_NAME=.*/VERSION_NAME=${{ needs.resolve_source.outputs.display_version }}/" "$file"
           grep '^VERSION_NAME=' "$file"
+      - name: Rebrand application identifiers
+        run: |
+          set -euo pipefail
+          # The APK is signed with our own keystore, so it must not keep the
+          # upstream application id: Android refuses to install a package whose
+          # id matches an installed one under a different signature.
+          assert() { grep -qF "$2" "$1" || { echo "missing in $1: $2" >&2; exit 1; }; }
+
+          gradle_file="sing-box-for-android/app/build.gradle.kts"
+          updater="sing-box-for-android/app/src/github/java/io/nekohasekai/sfa/vendor/GitHubUpdateChecker.kt"
+
+          assert "$gradle_file" 'applicationId = "io.reF1nd.sfa"'
+          assert "$updater" 'repos/reF1nd/sing-box-releases'
+          sed -i 's/applicationId = "io\.reF1nd\.sfa"/applicationId = "io.Exslr.sfa"/' "$gradle_file"
+          sed -i 's|repos/reF1nd/sing-box-releases|repos/Exslr/sing-box-releases|' "$updater"
+
+          # namespace stays io.nekohasekai.sfa: it names the generated R and
+          # BuildConfig classes, not the installed package, and the manifest
+          # refers to the id through ${applicationId} placeholders.
+          # strings.xml keeps "encrypt with age for reF1nd": that recipient key
+          # is reF1nd's, hardcoded in sing-box, so renaming it would mislead.
+          grep -n 'applicationId' "$gradle_file"
+          grep -n 'RELEASES_URL' "$updater"
       - name: Read version code from source
         run: |
           version_code=$(grep '^VERSION_CODE=' sing-box-for-android/version.properties | cut -d'=' -f2)
