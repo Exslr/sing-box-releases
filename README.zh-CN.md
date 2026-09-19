@@ -69,9 +69,6 @@ Android APK 使用私有 keystore 签名 —— 所有 Android 应用都是这�
 仅重命名版本号:上游的 `1.14.1-reF1nd` 在这里是 `1.14.1-Exslr`。源码始终按原始标签
 从 `reF1nd/sing-box` 拉取。
 
-Windows 桌面客户端还重命名了安装目录、系统服务和进程间通信端点,因此
-**无法与上游 reF1nd 版本共存** —— 两者会争抢同一个 TUN 设备。安装
-`sing-box-Exslr` 前请先卸载 `sing-box-reF1nd`。
 
 构建为手动触发。`build-stable.yml` 跟踪 `reF1nd-stable` 分支并发布正式版,
 `build-testing.yml` 跟踪 `reF1nd-testing` 分支并发布预发布版。发布的文件均带有
