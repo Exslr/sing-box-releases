@@ -75,11 +75,6 @@ Android app is signed — nothing extra to do there.
 Only the version string is renamed: `1.14.1-reF1nd` upstream becomes `1.14.1-Exslr`
 here. Source is always fetched from `reF1nd/sing-box` by its original tag.
 
-The Windows desktop client also renames its install directory, service and IPC
-endpoint, so **it cannot be installed alongside the upstream reF1nd build** — the two
-would fight over the same TUN device. Uninstall `sing-box-reF1nd` before installing
-`sing-box-Exslr`.
-
 Builds are triggered manually. `build-stable.yml` tracks the `reF1nd-stable` branch and
 publishes a release; `build-testing.yml` tracks `reF1nd-testing` and publishes a
 pre-release. Released files carry GitHub build provenance attestations and can be
