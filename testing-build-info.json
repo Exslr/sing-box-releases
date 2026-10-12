@@ -1,7 +1,7 @@
 {
-  "version": "1.14.0-rc.1-Exslr",
+  "version": "1.15.0-alpha.11-Exslr",
   "sing_box_branch": "reF1nd-testing",
-  "built_at": "2026-08-25T17:18:44Z",
-  "run_id": "32876449588",
-  "source_sha": "1eeea68a0bbcfa1a92af06149f95f41d73b3db49"
+  "built_at": "2026-10-12T08:08:42Z",
+  "run_id": "38220149731",
+  "source_sha": "78ea0ce9257bd3bedd4d1185d6cc4723f04096b4"
 }
