@@ -36,8 +36,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.version }}
   cancel-in-progress: true
 env:
-  GO_VERSION: '1.26.8'
-  GO_VERSION_DARWIN: '1.26.8'
+  GO_VERSION: '1.26.10'
+  GO_VERSION_DARWIN: '1.26.10'
 jobs:
   resolve_source:
     name: Resolve sing-box source
@@ -216,6 +216,10 @@ jobs:
           cd sing-box
           TAG="v${{ needs.resolve_source.outputs.display_version }}"
           git tag -f "${TAG}" "${{ needs.resolve_source.outputs.source_sha }}"
+      - name: Patch Go for Windows ARM64
+        if: matrix.platform == 'windows' && matrix.goarch == 'arm64' && hashFiles('sing-box/.github/patch_go_for_windows_arm64.sh') != ''
+        shell: bash
+        run: sing-box/.github/patch_go_for_windows_arm64.sh
       - name: Cache Go modules for Darwin
         if: matrix.platform == 'darwin'
         uses: actions/cache@v5
@@ -658,6 +662,10 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
+      - name: Patch Go for Windows ARM64
+        if: matrix.desktop_arch == 'arm64' && hashFiles('sing-box/.github/patch_go_for_windows_arm64.sh') != ''
+        shell: bash
+        run: sing-box/.github/patch_go_for_windows_arm64.sh
       - name: Cache Go modules
         uses: actions/cache@v5
         with:
